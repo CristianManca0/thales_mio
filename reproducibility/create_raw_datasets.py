@@ -105,25 +105,25 @@ if __name__ == "__main__":
     valid_cols_test = df_test_processed.columns[df_test_processed.notna().any()]
     common_valid_cols = valid_cols_train.intersection(valid_cols_test)
 
+    str_cols_tr = [c for c, t in cat_cols_train if t == "string"]
+    str_cols_ts = [c for c, t in cat_cols_test if t == "string"]
+    common_string_cols = list(set(str_cols_tr) & set(str_cols_ts) & set(common_valid_cols))
+
     # Separate features
     num_cols = df_train_processed[common_valid_cols].select_dtypes(include=["number"]).columns
     cat_cols = df_train_processed[common_valid_cols].select_dtypes(include=["category"]).columns
-    # Identify string columns based on the tag from convert_to_numeric_raw
-    string_cols = [col for col, tag in cat_cols_train if tag == "string" and col in common_valid_cols]
 
     # --- TRAIN DATA ---
     df_train[cat_cols] = simple_imputer.fit_transform(df_train_processed[cat_cols])
     df_train[num_cols] = iter_imputer.fit_transform(df_train_processed[num_cols])
-    if string_cols:
-        # Fit and transform strings specularly
-        df_train[string_cols] = encoder.fit_transform(df_train[string_cols].astype(str))
+    if common_string_cols:
+        df_train[common_string_cols] = encoder.fit_transform(df_train[common_string_cols].astype(str))
 
     # --- TEST DATA ---
     df_test[cat_cols] = simple_imputer.transform(df_test_processed[cat_cols])
     df_test[num_cols] = iter_imputer.transform(df_test_processed[num_cols])
-    if string_cols:
-        # Transform strings specularly
-        df_test[string_cols] = encoder.transform(df_test[string_cols].astype(str))
+    if common_string_cols:
+        df_test[common_string_cols] = encoder.transform(df_test[common_string_cols].astype(str))
 
     # Save the encoder for the Preprocessor
     encoder_path = Path(__file__).parent.parent / "preprocessing/models_preprocessing/ordinal_encoder_raw.pkl"
