@@ -43,7 +43,7 @@ class RawPreprocessor:
         df = X.copy()
         df, _ = convert_to_numeric_raw(df)
 
-        scaler_path = Path(__file__).parent / "models_preprocessing/scaler.pkl"
+        scaler_path = Path(__file__).parent / "models_preprocessing/scaler_raw.pkl"
         if scaler_path.exists():
             scaler = joblib.load(scaler_path)
         else:
@@ -54,7 +54,7 @@ class RawPreprocessor:
         if not scaler_path.exists():
             joblib.dump(
                 scaler,
-                Path(__file__).parent / "models_preprocessing/scaler.pkl",
+                Path(__file__).parent / "models_preprocessing/scaler_raw.pkl",
             )
 
         if data_path is not None:
@@ -93,7 +93,7 @@ class RawPreprocessor:
         df = X.copy()
         df, _ = convert_to_numeric_raw(df)
 
-        scaler_path = Path(__file__).parent / "models_preprocessing/scaler.pkl"
+        scaler_path = Path(__file__).parent / "models_preprocessing/scaler_raw.pkl"
         if not scaler_path.exists():
             raise SystemError(
                 "Missing scaler model. Please run training first."

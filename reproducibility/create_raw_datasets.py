@@ -85,12 +85,6 @@ if __name__ == "__main__":
     df_train_filtered = drop_tcp_and_icmp_packets(df_train)
     df_test_filtered = drop_tcp_and_icmp_packets(df_test)
 
-    tcp_columns = [
-        col for col in df_train_filtered.columns if col.startswith("tcp.")
-    ]
-    df_train_filtered.drop(columns=tcp_columns, inplace=True)
-    df_test_filtered.drop(columns=tcp_columns, inplace=True)
-
     # --------------------------------------
     # [Step 3] Separate features and labels
     # --------------------------------------
@@ -163,6 +157,17 @@ if __name__ == "__main__":
     # Train data
     cat_cols = df_train_processed.select_dtypes(include=["category"]).columns
     num_cols = df_train_processed.select_dtypes(exclude=["category"]).columns
+
+    # Fill completely empty columns with 0 to avoid imputation errors
+    for df_p in [df_train_processed, df_test_processed]:
+        all_nan_num = df_p[num_cols].columns[df_p[num_cols].isna().all()]
+        if not all_nan_num.empty:
+            logger.warning(f"Filling all-NaN numeric columns with 0: {list(all_nan_num)}")
+            df_p[all_nan_num] = df_p[all_nan_num].fillna(0)
+        all_nan_cat = df_p[cat_cols].columns[df_p[cat_cols].isna().all()]
+        if not all_nan_cat.empty:
+            logger.warning(f"Filling all-NaN categorical columns with 0: {list(all_nan_cat)}")
+            df_p[all_nan_cat] = df_p[all_nan_cat].fillna(0)
 
     df_train_filtered[cat_cols] = simple_imputer.fit_transform(
         df_train_processed[cat_cols]

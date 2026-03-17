@@ -70,13 +70,13 @@ if __name__ == "__main__":
     df_train = pd.concat(
         [df1, df2[df2["ip.opt.time_stamp"].isna()]], ignore_index=True
     )
-    logger.info("Train dataset shape:", df_train.shape)
+    logger.info(f"Train dataset shape: {df_train.shape}")
 
     # Create test dataset with all samples of dataset 3 and attack samples of dataset 2
     df_test = pd.concat(
         [df2[~df2["ip.opt.time_stamp"].isna()], df3], ignore_index=True
     )
-    logger.info("Test dataset shape:", df_test.shape)
+    logger.info(f"Test dataset shape: {df_test.shape}")
 
     # -----------------------------------------
     # [Step 2] Filter out TCP and ICMP packets
@@ -181,10 +181,10 @@ if __name__ == "__main__":
     df_test_filtered["ip.opt.time_stamp"] = labels_test
 
     df_train_filtered.to_csv(
-        dataset_dir / "train_dataset2.csv", sep=";", index=False
+        dataset_dir / "train_dataset.csv", sep=";", index=False
     )
     df_test_filtered.to_csv(
-        dataset_dir / "test_dataset2.csv", sep=";", index=False
+        dataset_dir / "test_dataset.csv", sep=";", index=False
     )
 
     logger.info("Datasets created and saved successfully.")

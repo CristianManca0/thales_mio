@@ -264,11 +264,9 @@ def convert_to_numeric_raw(
                 .astype("category")
             )
 
+
         elif dtype == "datetime":
-            df[col] = (
-                pd.to_datetime(df[col], errors="coerce").astype("int64")
-                // 10**9
-            )
+            df[col] = pd.to_numeric(pd.to_datetime(df[col], errors="coerce"), errors='coerce') / 1e9
             df[col] = df[col].astype("category")
 
     return df, cat_cols
