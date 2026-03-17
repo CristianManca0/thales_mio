@@ -5,6 +5,7 @@ import joblib
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.inspection import PartialDependenceDisplay
+from sklearn.base import BaseEstimator, RegressorMixin
 
 sys.path.append(str(Path(__file__).parent.parent))
 from ml_models import RawDetector
@@ -14,6 +15,24 @@ DATA_PATH = Path(__file__).parent.parent / "data/datasets/test_dataset_raw.csv"
 MODEL_PATH = Path(__file__).parent.parent / "data/trained_models_raw/with_scaler/HBOS.pkl"
 FIGURES_DIR = Path(__file__).parent.parent / "results_raw/figures"
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+class PyODWrapper(BaseEstimator, RegressorMixin):
+    def __init__(self, detector):
+        self.detector = detector
+
+    def fit(self, X, y=None):
+        return self
+
+    def predict(self, X):
+        return self.detector.decision_function(X)
+
+    def __sklearn_is_fitted__(self):
+        return True
+
+    def __sklearn_tags__(self):
+        tags = super().__sklearn_tags__()
+        tags.estimator_type = "regressor"
+        return tags
 
 if __name__ == "__main__":
     # 1. Caricamento dati e modello
@@ -34,10 +53,11 @@ if __name__ == "__main__":
     print(f"Generazione PDP per: {features_to_plot}...")
 
     # 4. Creazione del plot
-    # Nota: passiamo detector._detector perché sklearn vuole l'oggetto base PyOD
+    # Nota: passiamo il wrapper di PyOD perché sklearn richiede un regressore
+    wrapper = PyODWrapper(detector._detector)
     fig, ax = plt.subplots(figsize=(15, 5))
     display = PartialDependenceDisplay.from_estimator(
-        detector._detector,
+        wrapper,
         X_background,
         features=features_to_plot,
         kind="average",  # "average" è il PDP globale chiesto dal paper
