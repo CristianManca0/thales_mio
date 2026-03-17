@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 from sklearn.inspection import PartialDependenceDisplay
 
 sys.path.append(str(Path(__file__).parent.parent))
-from ml_models import RawDetector
 
 # Configurazione percorsi
 DATA_PATH = Path(__file__).parent.parent / "data/datasets/test_dataset_raw.csv"

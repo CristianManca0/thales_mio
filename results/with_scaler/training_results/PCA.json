@@ -1,0 +1,12 @@
+{
+    "model": "PCA",
+    "best_params": {
+        "contamination": 0.01,
+        "n_components": 10,
+        "random_state": 42
+    },
+    "roc_auc": 0.85647264823089,
+    "f1": 0.49489349285089,
+    "precision": 0.36208368915456873,
+    "recall": 0.7815668202764977
+}

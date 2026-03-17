@@ -1,0 +1,12 @@
+{
+    "model": "LODA",
+    "best_params": {
+        "contamination": 0.001,
+        "n_bins": 50,
+        "n_random_cuts": 100
+    },
+    "roc_auc": 0.6869029764988644,
+    "f1": 0.16540084388185655,
+    "precision": 0.98,
+    "recall": 0.09032258064516129
+}

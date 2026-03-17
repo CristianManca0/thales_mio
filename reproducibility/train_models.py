@@ -40,8 +40,10 @@ from sklearn.model_selection import ParameterGrid, train_test_split
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from ml_models import RawDetector
-from preprocessing import RawPreprocessor
+# from ml_models import RawDetector
+# from preprocessing import RawPreprocessor
+from ml_models import Detector
+from preprocessing import Preprocessor
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -50,19 +52,24 @@ logger.setLevel(logging.INFO)
 # region Configurations ---
 
 # --- PATHS AND CONSTANTS ---
-TRAIN_PATH = Path(__file__).parent.parent / "data/datasets/train_dataset_raw.csv"
-TEST_PATH = Path(__file__).parent.parent / "data/datasets/test_dataset_raw.csv"
+#TRAIN_PATH = Path(__file__).parent.parent / "data/datasets/train_dataset_raw.csv"
+#TEST_PATH = Path(__file__).parent.parent / "data/datasets/test_dataset_raw.csv"
+TRAIN_PATH = Path(__file__).parent.parent / "data/datasets/train_dataset.csv"
+TEST_PATH = Path(__file__).parent.parent / "data/datasets/test_dataset.csv"
 
 LABEL_COL = "ip.opt.time_stamp"
 VAL_SIZE = 0.50
 
 BEST_PARAMS_PATH = (
     Path(__file__).parent.parent
-    / "results_raw/with_scaler/training_results/detector_best_params.json"
+    #/ "results_raw/with_scaler/training_results/detector_best_params.json"
+    / "results/with_scaler/training_results/detector_best_params.json"
 )
 # Directory to save trained model and results
-MODEL_DIR = Path(__file__).parent.parent / "data/trained_models_raw/with_scaler"
-RESULTS_DIR = Path(__file__).parent.parent / "results_raw/with_scaler/training_results"
+#MODEL_DIR = Path(__file__).parent.parent / "data/trained_models_raw/with_scaler"
+#RESULTS_DIR = Path(__file__).parent.parent / "results_raw/with_scaler/training_results"
+MODEL_DIR = Path(__file__).parent.parent / "data/trained_models/with_scaler"
+RESULTS_DIR = Path(__file__).parent.parent / "results/with_scaler/training_results"
 
 # --- LIST OF CONFIGURATIONS ---
 PARAM_GRID_MODELS = {
@@ -206,7 +213,8 @@ def _evaluate_single_config(
     y_val: np.ndarray,
 ) -> tuple[float, dict]:
     try:
-        detector = RawDetector(detector_class=model_class, **params)
+        #detector = RawDetector(detector_class=model_class, **params)
+        detector = Detector(detector_class=model_class, **params)
         detector.fit(X_tr, skip_preprocess=True)
         scores = detector.predict(X_val, skip_preprocess=True)
         auc = roc_auc_score(y_val, scores)
@@ -244,7 +252,8 @@ if __name__ == "__main__":
     # ---------------------------------------------
     # [Step 2.1] Preprocess train and test datasets
     # ---------------------------------------------
-    processor = RawPreprocessor()
+    #processor = RawPreprocessor()
+    processor = Preprocessor()
     X_tr = processor.train(X_tr)
     X_ts = processor.test(X_ts)
     X_val = processor.test(X_val)
@@ -313,9 +322,8 @@ if __name__ == "__main__":
         # Final Training on Train Set with best params
         logger.info(f"Training final {model_name} model...")
 
-        final_detector = RawDetector(
-            detector_class=eval(model_name), **best_params
-        )
+        #final_detector = RawDetector(detector_class=eval(model_name), **best_params)
+        final_detector = Detector(detector_class=eval(model_name), **best_params)
         final_detector.fit(X_tr, skip_preprocess=True)
 
         # Final Evaluation on Test Set

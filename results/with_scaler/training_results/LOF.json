@@ -1,0 +1,11 @@
+{
+    "model": "LOF",
+    "best_params": {
+        "contamination": 0.01,
+        "n_neighbors": 50
+    },
+    "roc_auc": 0.8524747673453805,
+    "f1": 0.5154835636017151,
+    "precision": 0.34757468679730164,
+    "recall": 0.9972350230414746
+}
