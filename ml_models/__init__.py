@@ -1,5 +1,6 @@
-from .isolation_forest import DetectionIsolationForest
-from .knn import DetectionKnn
-from .random_forest import DetectionRandomForest
+"""Package for machine learning models for anomaly detection."""
 
-__all__ = ["DetectionIsolationForest", "DetectionRandomForest", "DetectionKnn"]
+from .detector import Detector
+from .ensemble_detector import EnsembleDetector
+
+__all__ = ["Detector", "EnsembleDetector"]
