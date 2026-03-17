@@ -46,16 +46,13 @@ class Preprocessor:
         scaler_path = Path(__file__).parent / "models_preprocessing/scaler.pkl"
         if scaler_path.exists():
             scaler = joblib.load(scaler_path)
+            df_final = scaler.transform(df)
         else:
             scaler = RobustScaler()
-        df_final = scaler.fit_transform(df)
-        df_final = pd.DataFrame(df_final, columns=df.columns, index=df.index)
+            df_final = scaler.fit_transform(df)
+            joblib.dump(scaler, scaler_path)
 
-        if not scaler_path.exists():
-            joblib.dump(
-                scaler,
-                Path(__file__).parent / "models_preprocessing/scaler.pkl",
-            )
+        df_final = pd.DataFrame(df_final, columns=df.columns, index=df.index)
 
         if data_path is not None:
             Path(data_path.parent).mkdir(exist_ok=True)
