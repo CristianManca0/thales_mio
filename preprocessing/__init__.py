@@ -1,6 +1,7 @@
 """Preprocessing package for network traffic data."""
 
 from .preprocessor import Preprocessor
+from .preprocessor_raw import RawPreprocessor
 from .utils import (
     convert_to_numeric,
     drop_constant_columns,
@@ -9,6 +10,7 @@ from .utils import (
 )
 
 __all__ = [
+    "RawPreprocessor",
     "Preprocessor",
     "drop_useless_columns",
     "drop_constant_columns",

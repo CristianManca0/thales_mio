@@ -161,9 +161,7 @@ if __name__ == "__main__":
     ]
     for col in round_cols:
         if col in df_train_filtered.columns:
-            df_train_filtered[col] = (
-                df_train_filtered[col].round().astype(float)
-            )
+            df_train_filtered[col] = df_train_filtered[col].round().astype(float)
         if col in df_test_filtered.columns:
             df_test_filtered[col] = df_test_filtered[col].round().astype(float)
 

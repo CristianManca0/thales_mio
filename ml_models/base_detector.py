@@ -65,3 +65,23 @@ class BaseDetector(ABC):
         np.ndarray
             The confidence scores.
         """
+
+    @abstractmethod
+    def predict_proba(
+            self, X: pd.DataFrame, skip_preprocess: bool = False
+    ) -> np.ndarray:
+        """
+        Predict class probabilities for samples in X.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input data.
+        skip_preprocess : bool, optional
+            Whether to skip preprocessing, by default False.
+
+        Returns
+        -------
+        np.ndarray
+            The predicted class probabilities.
+        """

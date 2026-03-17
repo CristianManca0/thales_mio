@@ -29,9 +29,9 @@ logger.setLevel(logging.INFO)
 # Same configuration as in train
 VAL_SIZE = 0.50
 RANDOM_STATE = 42
-MODEL_DIR = Path(__file__).parent.parent / "data/trained_models/with_scaler"
-OUTPUT_DIR = Path(__file__).parent.parent / "results/with_scaler/category_results"
-TS_DATA_PATH = Path(__file__).parent.parent / "data/datasets/test_dataset.csv"
+MODEL_DIR = Path(__file__).parent.parent / "data/trained_models_raw/with_scaler"
+OUTPUT_DIR = Path(__file__).parent.parent / "results_raw/with_scaler/category_results"
+TS_DATA_PATH = Path(__file__).parent.parent / "data/datasets/test_dataset_raw.csv"
 ATTACK_TYPE_MAP = {
     0: "flooding",
     1: "session_deletion",

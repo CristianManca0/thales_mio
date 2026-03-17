@@ -11,6 +11,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer, SimpleImputer
+from sklearn.preprocessing import OrdinalEncoder
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s")
@@ -213,6 +214,97 @@ def restore_categoric_columns(
     return df
 
 
+def convert_to_numeric_raw(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[tuple[str, str]]]:
+    cat_cols = []
+    for col in df.columns:
+        dtype = _detect_type(df[col])
+
+        if dtype == "empty":
+            logger.debug(f"Column '{col}' missing type detected as '{dtype}'.")
+            continue
+
+        if dtype == "skip":
+            if df[col].dtype == 'object' or df[col].dtype.name == 'string':
+                df[col] = df[col].astype("category")
+                cat_cols.append((col, "string"))
+            continue
+
+        cat_cols.append((col, dtype))
+
+        if dtype == "bool":
+            df[col] = (
+                df[col]
+                .map({True: 1, False: 0, "True": 1, "False": 0})
+                .astype("category")
+            )
+
+        elif dtype == "hex":
+            df[col] = (
+                df[col]
+                .apply(
+                    lambda x: int(str(x), 16)
+                    if pd.notnull(x) and str(x).startswith("0x")
+                    else np.nan
+                )
+                .astype("category")
+            )
+
+        elif dtype == "ip_address":
+            df[col] = (
+                df[col]
+                .apply(
+                    lambda x: int(ipaddress.ip_address(x))
+                    if pd.notnull(x)
+                    else np.nan
+                )
+                .astype("category")
+            )
+
+        elif dtype == "datetime":
+            df[col] = (
+                pd.to_datetime(df[col], errors="coerce").astype("int64")
+                // 10**9
+            )
+            df[col] = df[col].astype("category")
+
+    return df, cat_cols
+
+
+def restore_categoric_columns_raw(
+    df: pd.DataFrame, cat_cols: list[tuple[str, str]]
+) -> pd.DataFrame:
+    for col, dtype in cat_cols:
+        if dtype == "string":
+            df[col] = df[col].astype("object")
+
+        if dtype == "bool":
+            df[col] = df[col].map({1: True, 0: False}).astype("category")
+
+        elif dtype == "hex":
+            df[col] = df[col].apply(
+                lambda x: hex(int(x)) if pd.notnull(x) else np.nan
+            )
+            df[col] = df[col].astype("category")
+
+        elif dtype == "ip_address":
+            df[col] = df[col].apply(
+                lambda x: str(ipaddress.ip_address(int(x)))
+                if pd.notnull(x)
+                else np.nan
+            )
+            df[col] = df[col].astype("category")
+
+        elif dtype == "datetime":
+            df[col] = pd.to_datetime(
+                df[col].astype("float"), unit="s", errors="coerce"
+            )
+            df[col] = df[col].astype("category")
+
+    return df
+
+
 def load_imputers(
     random_state: int = 42,
 ) -> tuple[SimpleImputer, IterativeImputer]:
@@ -242,3 +334,44 @@ def load_imputers(
         iter_imputer: IterativeImputer = joblib.load(iter_imputer_path)
 
     return simple_imputer, iter_imputer
+
+
+
+def load_imputers_raw(
+    random_state: int = 42,
+) -> tuple[SimpleImputer, IterativeImputer]:
+    simple_imputer_path = (
+        Path(__file__).parent / "models_preprocessing/simple_imputer_raw.pkl"
+    )
+    iter_imputer_path = (
+        Path(__file__).parent / "models_preprocessing/iter_imputer_raw.pkl"
+    )
+
+    if not simple_imputer_path.exists():
+        simple_imputer = SimpleImputer(strategy="most_frequent")
+        iter_imputer = IterativeImputer(
+            estimator=RandomForestRegressor(
+                n_jobs=-1,
+                max_depth=20,
+                n_estimators=50,
+                random_state=random_state,
+            ),
+            initial_strategy="median",
+            max_iter=10,
+            random_state=random_state,
+            skip_complete=True,
+        )
+    else:
+        simple_imputer: SimpleImputer = joblib.load(simple_imputer_path)
+        iter_imputer: IterativeImputer = joblib.load(iter_imputer_path)
+
+    return simple_imputer, iter_imputer
+
+
+def load_encoders_raw() -> OrdinalEncoder:
+    """Loads or initializes the OrdinalEncoder for raw string columns."""
+    encoder_path = Path(__file__).parent / "models_preprocessing/ordinal_encoder_raw.pkl"
+    if encoder_path.exists():
+        return joblib.load(encoder_path)
+    # handle_unknown is critical to avoid crashes on new payloads during test
+    return OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)

@@ -51,3 +51,9 @@ class EnsembleDetector(BaseDetector):
     ) -> np.ndarray:
         X_meta = self._meta_features(X, skip_preprocess)
         return self._meta_clf.decision_function(X_meta)
+
+    def predict_proba(
+            self, X: pd.DataFrame, skip_preprocess: bool = False
+    ) -> np.ndarray:
+        X_meta = self._meta_features(X, skip_preprocess)
+        return self._meta_clf.predict_proba(X_meta)

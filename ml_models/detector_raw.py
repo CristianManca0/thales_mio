@@ -6,12 +6,12 @@ import numpy as np
 import pandas as pd
 from pyod.models.base import BaseDetector
 
-from preprocessing import Preprocessor
+from preprocessing import RawPreprocessor
 
 from . import base_detector
 
 
-class Detector(base_detector.BaseDetector):
+class RawDetector(base_detector.BaseDetector):
     """Detector wrapper class for anomaly detection models."""
 
     def __init__(self, detector_class: BaseDetector, **detector_params) -> None:
@@ -29,7 +29,7 @@ class Detector(base_detector.BaseDetector):
         self.detector_class = detector_class
         self.detector_params = detector_params
 
-        self._preprocessor = Preprocessor()
+        self._preprocessor = RawPreprocessor()
         self._trained = False
         self._detector: BaseDetector = self.detector_class(
             **self.detector_params
