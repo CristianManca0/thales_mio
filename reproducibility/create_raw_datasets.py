@@ -1,9 +1,9 @@
 """
-Script to create RAW train and test datasets.
-It performs only the fundamental machine learning steps without feature optimization:
+Script to create initial train and test datasets from raw datasets.
+It performs the following steps:
 1. Merges raw datasets to create train and test datasets.
-2. (NO PROTOCOL FILTERING)
-3. (NO USELESS OR CONSTANT COLUMNS REMOVAL)
+2. Filters out TCP and ICMP packets.
+3. Drops useless and constant columns.
 4. Converts categoric columns to numeric.
 5. Imputes missing values.
 6. Restores categoric columns.
@@ -12,7 +12,7 @@ It performs only the fundamental machine learning steps without feature optimiza
 import logging
 from pathlib import Path
 import sys
-
+import numpy as np
 import joblib
 import pandas as pd
 
@@ -29,8 +29,14 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s")
 logger.setLevel(logging.INFO)
 
 
+def drop_tcp_and_icmp_packets(packets: pd.DataFrame) -> pd.DataFrame:
+    # Filter out TCP (ip.proto == 6) and ICMP (ip.proto == 1) packets
+    mask = packets["ip.proto"].isin([1, 6])
+    filtered_packets = packets[~mask].copy()
+    return filtered_packets
+
+
 if __name__ == "__main__":
-    # Load initial raw datasets
     df1 = pd.read_csv(
         Path(__file__).parent.parent
         / "data/raw_datasets/dataset_1_cleaned.csv",
@@ -56,7 +62,7 @@ if __name__ == "__main__":
     # ----------------------------------------------------------
     # [Step 1] Merge datasets to create train and test datasets
     # ----------------------------------------------------------
-    logger.info("Creating raw train and test datasets...")
+    logger.info("Creating train and test datasets...")
 
     # Create train dataset concatenating dataset 1 and legitimate samples of dataset 2
     # legitimate samples of dataset 2 are those with label ip.opt.time_stamp = NaN,
@@ -71,65 +77,111 @@ if __name__ == "__main__":
     )
     logger.info(f"Test dataset shape: {df_test.shape}")
 
-    # NO COLUMN FILTER: SKIPPED 'Filter out TCP and ICMP packets' STEP
+    # -----------------------------------------
+    # [Step 2] Filter out TCP and ICMP packets
+    # -----------------------------------------
+    logger.info("Filtering out TCP and ICMP packets...")
+
+    df_train_filtered = drop_tcp_and_icmp_packets(df_train)
+    df_test_filtered = drop_tcp_and_icmp_packets(df_test)
+
+    tcp_columns = [
+        col for col in df_train_filtered.columns if col.startswith("tcp.")
+    ]
+    df_train_filtered.drop(columns=tcp_columns, inplace=True)
+    df_test_filtered.drop(columns=tcp_columns, inplace=True)
 
     # --------------------------------------
-    # [Step 2] Separate features and labels
+    # [Step 3] Separate features and labels
     # --------------------------------------
-    labels_train = df_train["ip.opt.time_stamp"].copy()
-    labels_test = df_test["ip.opt.time_stamp"].copy()
+    labels_train = df_train_filtered["ip.opt.time_stamp"].copy()
+    labels_test = df_test_filtered["ip.opt.time_stamp"].copy()
 
-    df_train.drop(columns=["ip.opt.time_stamp"], inplace=True)
-    df_test.drop(columns=["ip.opt.time_stamp"], inplace=True)
+    df_train_filtered.drop(columns=["ip.opt.time_stamp"], inplace=True)
+    df_test_filtered.drop(columns=["ip.opt.time_stamp"], inplace=True)
 
-    # NO COLUMN REMOVAL: SKIPPED 'drop_useless_columns' and 'drop_constant_columns' STEPS
+    # ------------------------------
+    # [Step 4] Drop useless columns -> SKIPPED
+    # ------------------------------
 
     # ----------------------------------------------
-    # [Step 3] Convert categoric columns to numeric
+    # [Step 5] Convert categoric columns to numeric
     # ----------------------------------------------
     logger.info("Converting categoric columns to numeric...")
+    # ==========================================
+    # BLOCCO DI DEBUG: Stampiamo i valori univoci
+    # ==========================================
+    for col in ["ip.flags.df"]:
+        if col in df_train_filtered.columns:
+            train_vals = df_train_filtered[col].dropna().unique()
+            logger.info(f"DEBUG {col} | TRAIN | Totale univoci: {len(train_vals)} | Primi 10: {train_vals[:10]}")
+        if col in df_test_filtered.columns:
+            test_vals = df_test_filtered[col].dropna().unique()
+            logger.info(f"DEBUG {col} | TEST  | Totale univoci: {len(test_vals)} | Primi 10: {test_vals[:10]}")
+    # ==========================================
+    df_train_processed, cat_cols_train = convert_to_numeric_raw(df_train_filtered)
+    # ==========================================
+    # BLOCCO DI DEBUG: Che tipo gli ha assegnato?
+    # ==========================================
+    for col, dtype in cat_cols_train:
+        if col in ["ip.flags.df"]:
+            logger.info(f"DEBUG TRAIN CATEGORY | Colonna: {col} | Tipo assegnato: {dtype}")
+    # ==========================================
+    df_test_processed, cat_cols_test = convert_to_numeric_raw(df_test_filtered)
+    # ==========================================
+    # BLOCCO DI DEBUG: Che tipo gli ha assegnato?
+    # ==========================================
+    for col, dtype in cat_cols_train:
+        if col in ["ip.flags.df"]:
+            logger.info(f"DEBUG TEST CATEGORY | Colonna: {col} | Tipo assegnato: {dtype}")
+    # ==========================================
 
-    df_train_processed, cat_cols_train = convert_to_numeric_raw(df_train)
-    df_test_processed, cat_cols_test = convert_to_numeric_raw(df_test)
+    logger.info("Encoding strings...")
+    encoder = load_encoders_raw()
+
+    str_cols = [c for c, t in cat_cols_train if t == "string"]
+    if str_cols:
+        df_train_str = df_train_processed[str_cols].astype(str)
+        df_test_str = df_test_processed[str_cols].astype(str)
+
+        df_train_filtered[str_cols] = encoder.fit_transform(df_train_str)
+        df_test_filtered[str_cols] = encoder.transform(df_test_str)
+
+        encoder_path = Path(__file__).parent.parent / "preprocessing/models_preprocessing/ordinal_encoder_raw.pkl"
+        joblib.dump(encoder, encoder_path)
 
     # -------------------------------
-    # [Step 4] Impute missing values
+    # [Step 6] Impute missing values
     # -------------------------------
-    logger.info("Imputing missing values and encoding strings...")
+    logger.info("Imputing missing values...")
 
     simple_imputer, iter_imputer = load_imputers_raw(random_state=42)
-    encoder = load_encoders_raw()  # Specular load
+    encoder = load_encoders_raw()
 
-    # Identify valid columns for both sets
-    valid_cols_train = df_train_processed.columns[df_train_processed.notna().any()]
-    valid_cols_test = df_test_processed.columns[df_test_processed.notna().any()]
-    common_valid_cols = valid_cols_train.intersection(valid_cols_test)
+    str_cols = [c for c, t in cat_cols_train if t == "string"]
 
-    str_cols_tr = [c for c, t in cat_cols_train if t == "string"]
-    str_cols_ts = [c for c, t in cat_cols_test if t == "string"]
-    common_string_cols = list(set(str_cols_tr) & set(str_cols_ts) & set(common_valid_cols))
+    # Train data
+    cat_cols = df_train_processed.select_dtypes(include=["category"]).columns
+    num_cols = df_train_processed.select_dtypes(exclude=["category"]).columns
 
-    # Separate features
-    num_cols = df_train_processed[common_valid_cols].select_dtypes(include=["number"]).columns
-    cat_cols = df_train_processed[common_valid_cols].select_dtypes(include=["category"]).columns
+    df_train_filtered[cat_cols] = simple_imputer.fit_transform(
+        df_train_processed[cat_cols]
+    )
+    df_train_filtered[num_cols] = iter_imputer.fit_transform(
+        df_train_processed[num_cols]
+    )
 
-    # --- TRAIN DATA ---
-    df_train[cat_cols] = simple_imputer.fit_transform(df_train_processed[cat_cols])
-    df_train[num_cols] = iter_imputer.fit_transform(df_train_processed[num_cols])
-    if common_string_cols:
-        df_train[common_string_cols] = encoder.fit_transform(df_train[common_string_cols].astype(str))
+    # Test data
+    cat_cols = df_test_processed.select_dtypes(include=["category"]).columns
+    num_cols = df_test_processed.select_dtypes(exclude=["category"]).columns
 
-    # --- TEST DATA ---
-    df_test[cat_cols] = simple_imputer.transform(df_test_processed[cat_cols])
-    df_test[num_cols] = iter_imputer.transform(df_test_processed[num_cols])
-    if common_string_cols:
-        df_test[common_string_cols] = encoder.transform(df_test[common_string_cols].astype(str))
+    df_test_filtered[cat_cols] = simple_imputer.transform(
+        df_test_processed[cat_cols]
+    )
+    df_test_filtered[num_cols] = iter_imputer.transform(
+        df_test_processed[num_cols]
+    )
 
-    # Save the encoder for the Preprocessor
-    encoder_path = Path(__file__).parent.parent / "preprocessing/models_preprocessing/ordinal_encoder_raw.pkl"
-    joblib.dump(encoder, encoder_path)
-
-    # Round specific PFCP columns for consistency
     round_cols = [
         "pfcp.duration_measurement",
         "pfcp.ie_type",
@@ -140,32 +192,38 @@ if __name__ == "__main__":
         "pfcp.volume_measurement.dlvol",
         "pfcp.volume_measurement.tonop",
         "pfcp.volume_measurement.tovol",
+        # ONLY for RAW version
+        "pfcp.cause",
+        "pfcp.node_id_type",
+        "pfcp.pdn_type",
+        "pfcp.source_interface"
     ]
     for col in round_cols:
-        if col in df_train.columns:
-            df_train[col] = df_train[col].round().astype(float)
-        if col in df_test.columns:
-            df_test[col] = df_test[col].round().astype(float)
+        if col in df_train_filtered.columns:
+            df_train_filtered[col] = df_train_filtered[col].round().astype(float)
+        if col in df_test_filtered.columns:
+            df_test_filtered[col] = df_test_filtered[col].round().astype(float)
 
     # -----------------------------------
-    # [Step 5] Restore categoric columns
+    # [Step 7] Restore categoric columns
     # -----------------------------------
     logger.info("Restoring categoric columns...")
 
-    df_train = restore_categoric_columns_raw(
-        df_train, cat_cols_train
+    df_train_filtered = restore_categoric_columns_raw(
+        df_train_filtered, cat_cols_train
     )
-    df_test = restore_categoric_columns_raw(
-        df_test, cat_cols_test
+    df_test_filtered = restore_categoric_columns_raw(
+        df_test_filtered, cat_cols_test
     )
 
-    df_train["ip.opt.time_stamp"] = labels_train
-    df_test["ip.opt.time_stamp"] = labels_test
+    df_train_filtered["ip.opt.time_stamp"] = labels_train
+    df_test_filtered["ip.opt.time_stamp"] = labels_test
 
-    train_out_path = dataset_dir / "train_dataset_raw.csv"
-    test_out_path = dataset_dir / "test_dataset_raw.csv"
+    df_train_filtered.to_csv(
+        dataset_dir / "train_dataset_raw.csv", sep=";", index=False
+    )
+    df_test_filtered.to_csv(
+        dataset_dir / "test_dataset_raw.csv", sep=";", index=False
+    )
 
-    df_train.to_csv(train_out_path, sep=";", index=False)
-    df_test.to_csv(test_out_path, sep=";", index=False)
-
-    logger.info(f"Datasets successfully created and saved at:\n- {train_out_path}\n- {test_out_path}")
+    logger.info("Datasets created and saved successfully.")

@@ -6,7 +6,7 @@ import joblib
 import pandas as pd
 from sklearn.preprocessing import RobustScaler
 
-from .utils import convert_to_numeric_raw, load_encoders_raw
+from .utils import convert_to_numeric_raw
 
 
 class RawPreprocessor:
@@ -41,13 +41,7 @@ class RawPreprocessor:
         (Path(__file__).parent / "models_preprocessing").mkdir(exist_ok=True)
 
         df = X.copy()
-        df, cat_tags = convert_to_numeric_raw(df)
-
-        encoder = load_encoders_raw()
-        string_cols = [col for col, tag in cat_tags if tag == "string"]
-        if string_cols:
-            df[string_cols] = encoder.fit_transform(df[string_cols].astype(str))
-            joblib.dump(encoder, Path(__file__).parent / "models_preprocessing/ordinal_encoder_raw.pkl")
+        df, _ = convert_to_numeric_raw(df)
 
         scaler_path = Path(__file__).parent / "models_preprocessing/scaler.pkl"
         if scaler_path.exists():
@@ -97,12 +91,7 @@ class RawPreprocessor:
                 return pd.read_csv(f, sep=";")
 
         df = X.copy()
-        df, cat_tags = convert_to_numeric_raw(df)
-
-        encoder = load_encoders_raw()
-        string_cols = [col for col, tag in cat_tags if tag == "string"]
-        if string_cols:
-            df[string_cols] = encoder.transform(df[string_cols].astype(str))
+        df, _ = convert_to_numeric_raw(df)
 
         scaler_path = Path(__file__).parent / "models_preprocessing/scaler.pkl"
         if not scaler_path.exists():

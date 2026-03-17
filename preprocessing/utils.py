@@ -98,13 +98,15 @@ def _detect_type(series: pd.Series) -> str:
     if len(sample_values) == 0:
         return "empty"
 
-    samples_values = sample_values[:5]
-
-    if series.dtype == bool or set(samples_values).issubset(
-        {True, False, "True", "False", 0, 1}
-    ):
+    val_set = set(sample_values)
+    if pd.api.types.is_bool_dtype(series):
+        return "bool"
+    if pd.api.types.is_integer_dtype(series) and val_set.issubset({0, 1}):
+        return "bool"
+    if val_set.issubset({"True", "False", "true", "false", "T", "F"}):
         return "bool"
 
+    samples_values = sample_values[:5]
     first_val = str(samples_values[0])
     if isinstance(first_val, str) and first_val.startswith("0x"):
         try:
@@ -374,4 +376,9 @@ def load_encoders_raw() -> OrdinalEncoder:
     if encoder_path.exists():
         return joblib.load(encoder_path)
     # handle_unknown is critical to avoid crashes on new payloads during test
-    return OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+    return OrdinalEncoder(
+        handle_unknown='use_encoded_value',
+        unknown_value=-1,
+        encoded_missing_value=np.nan
+    )
+
