@@ -1,4 +1,5 @@
 import argparse
+import json
 import joblib
 import logging
 from pathlib import Path
@@ -123,6 +124,25 @@ def explain_model(model_name: str, use_raw: bool):
         plt.close()
 
         logger.info(f"Successfully saved SHAP summary plot to {output_file}")
+
+        # Save feature importances to JSON
+        # SHAP values shape: (n_samples, n_features)
+        mean_abs_shap_values = np.abs(shap_values).mean(axis=0)
+        feature_names = X_explain.columns.tolist()
+
+        feature_importance = [
+            {"feature": name, "importance": float(val)}
+            for name, val in zip(feature_names, mean_abs_shap_values)
+        ]
+
+        # Sort by importance (descending)
+        feature_importance.sort(key=lambda x: x["importance"], reverse=True)
+
+        json_file = results_dir / f"shap_features_{model_name}_{suffix}.json"
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump(feature_importance, f, indent=4)
+
+        logger.info(f"Successfully saved SHAP features list to {json_file}")
 
     except Exception as e:
         logger.error(f"Error computing SHAP for {model_name}: {e}")
