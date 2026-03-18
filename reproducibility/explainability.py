@@ -92,6 +92,14 @@ def explain_model(model_name: str, use_raw: bool):
     X_background = X_background[sorted(X_background.columns)]
     X_explain = X_explain[sorted(X_explain.columns)]
 
+    # SHAP summary plot requires numeric values to properly map colors to feature values.
+    # Convert category dtypes to numeric if any are present.
+    cat_cols = X_explain.select_dtypes(include=["category"]).columns
+    if not cat_cols.empty:
+        logger.info(f"Converting category columns to numeric for SHAP plot: {list(cat_cols)}")
+        for col in cat_cols:
+            X_explain[col] = pd.to_numeric(X_explain[col], errors='coerce')
+
     logger.info(f"Computing SHAP values for {model_name} (use_raw={use_raw})...")
 
     # Most PyOD models decision_function works with numpy arrays
