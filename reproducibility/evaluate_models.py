@@ -19,18 +19,20 @@ from sklearn.model_selection import train_test_split
 sys.path.append(str(Path(__file__).parent.parent))
 import logging
 
-from ml_models import Detector, EnsembleDetector
-from preprocessing import Preprocessor
+#from ml_models import Detector, EnsembleDetector
+#from preprocessing import Preprocessor
+from ml_models import RawDetector, EnsembleDetector
+from preprocessing import RawPreprocessor
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 # Same configuration as in train
 VAL_SIZE = 0.50
 RANDOM_STATE = 42
-MODEL_DIR = Path(__file__).parent.parent / "data/trained_models_raw/with_scaler"
-OUTPUT_DIR = Path(__file__).parent.parent / "results_raw/with_scaler/category_results"
+MODEL_DIR = Path(__file__).parent.parent / "data/trained_models_raw/without_scaler"
+OUTPUT_DIR = Path(__file__).parent.parent / "results_raw/without_scaler/category_results"
 TS_DATA_PATH = Path(__file__).parent.parent / "data/datasets/test_dataset_raw.csv"
 ATTACK_TYPE_MAP = {
     0: "flooding",
@@ -51,7 +53,7 @@ def _convert_labels_to_binary(labels: pd.Series) -> np.ndarray:
 
 
 def evaluate_models_by_category(
-    detector: EnsembleDetector | Detector, X_ts: pd.DataFrame, y_ts: pd.Series
+    detector: EnsembleDetector | RawDetector, X_ts: pd.DataFrame, y_ts: pd.Series
 ) -> dict:
     """
     Evaluate detector performance for each attack category separately.
@@ -295,7 +297,8 @@ if __name__ == "__main__":
 
     logger.debug(f"Test set: {len(X_ts)} samples")
 
-    processor = Preprocessor()
+    #processor = Preprocessor()
+    processor = RawPreprocessor()
     X_ts = processor.test(X_ts)
     y_ts = df_test_full.loc[X_ts.index, "ip.opt.time_stamp"]
 
@@ -310,7 +313,7 @@ if __name__ == "__main__":
         logger.error(f"Models directory not found at: {MODEL_DIR}")
         sys.exit(1)
 
-    for model_path in list(MODEL_DIR.glob("Ensemble*.pkl")):
+    for model_path in list(MODEL_DIR.glob("*.pkl")):
         model_name = model_path.stem
         logger.info(f"Evaluating model: {model_name}")
 

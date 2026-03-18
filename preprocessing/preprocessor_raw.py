@@ -43,19 +43,21 @@ class RawPreprocessor:
         df = X.copy()
         df, _ = convert_to_numeric_raw(df)
 
-        scaler_path = Path(__file__).parent / "models_preprocessing/scaler_raw.pkl"
-        if scaler_path.exists():
-            scaler = joblib.load(scaler_path)
-        else:
-            scaler = RobustScaler()
-        df_final = scaler.fit_transform(df)
-        df_final = pd.DataFrame(df_final, columns=df.columns, index=df.index)
+        #scaler_path = Path(__file__).parent / "models_preprocessing/scaler_raw.pkl"
+        #if scaler_path.exists():
+        #    scaler = joblib.load(scaler_path)
+        #else:
+        #    scaler = RobustScaler()
+        #df_final = scaler.fit_transform(df)
+        #df_final = pd.DataFrame(df_final, columns=df.columns, index=df.index)
 
-        if not scaler_path.exists():
-            joblib.dump(
-                scaler,
-                Path(__file__).parent / "models_preprocessing/scaler_raw.pkl",
-            )
+        #if not scaler_path.exists():
+        #    joblib.dump(
+        #        scaler,
+        #        Path(__file__).parent / "models_preprocessing/scaler_raw.pkl",
+        #    )
+
+        df_final = pd.DataFrame(df, columns=df.columns, index=df.index)
 
         if data_path is not None:
             Path(data_path.parent).mkdir(exist_ok=True)
@@ -93,15 +95,17 @@ class RawPreprocessor:
         df = X.copy()
         df, _ = convert_to_numeric_raw(df)
 
-        scaler_path = Path(__file__).parent / "models_preprocessing/scaler_raw.pkl"
-        if not scaler_path.exists():
-            raise SystemError(
-                "Missing scaler model. Please run training first."
-            )
+        #scaler_path = Path(__file__).parent / "models_preprocessing/scaler_raw.pkl"
+        #if not scaler_path.exists():
+        #    raise SystemError(
+        #        "Missing scaler model. Please run training first."
+        #    )
 
-        scaler: RobustScaler = joblib.load(scaler_path)
-        df_final = scaler.transform(df)
-        df_final = pd.DataFrame(df_final, columns=df.columns, index=df.index)
+        #scaler: RobustScaler = joblib.load(scaler_path)
+        #df_final = scaler.transform(df)
+        #df_final = pd.DataFrame(df_final, columns=df.columns, index=df.index)
+
+        df_final = pd.DataFrame(df, columns=df.columns, index=df.index)
 
         if data_path is not None:
             df_final.to_csv(data_path, sep=";", index=False)
