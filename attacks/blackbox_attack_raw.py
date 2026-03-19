@@ -22,6 +22,36 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
+def _enforce_network_constraints(sample: pd.Series, orig_sample: pd.Series) -> pd.Series:
+    """
+    Ricalcola le feature derivate per mantenere il pacchetto avversario
+    fisicamente realistico e coerente con lo stack TCP/IP.
+    """
+    adv_sample = sample.copy()
+    # 1. Coerenza del QoS (ip.dsfield <- ip.dsfield.dscp)
+    if "ip.dsfield.dscp" in adv_sample and "ip.dsfield" in adv_sample:
+        # Recuperiamo i 2 bit originali di ECN (se presenti)
+        orig_dsfield = int(str(orig_sample["ip.dsfield"]), 16) if pd.notnull(orig_sample["ip.dsfield"]) else 0
+        orig_ecn = orig_dsfield & 0x03
+
+        new_dscp = int(adv_sample["ip.dsfield.dscp"])
+        # dsfield = (dscp * 4) + ecn
+        adv_sample["ip.dsfield"] = hex((new_dscp << 2) | orig_ecn)
+
+    # 2. Coerenza dei Flag IP (ip.flags <- ip.flags.df)
+    if "ip.flags.df" in adv_sample and "ip.flags" in adv_sample:
+        df_bit = int(adv_sample["ip.flags.df"])
+        # Standard IPv4: bit DF è 0x02. (Ignoriamo MF per semplicità, nei pacchetti PFCP non si frammenta quasi mai)
+        adv_sample["ip.flags"] = hex(0x02) if df_bit == 1 else hex(0x00)
+
+    # 3. Coerenza Porte UDP (udp.port <- udp.srcport)
+    if "udp.srcport" in adv_sample and "udp.port" in adv_sample:
+        adv_sample["udp.port"] = adv_sample["udp.srcport"]
+
+    return adv_sample
+
+
 ATTACK_TYPE_MAP = {
     0: "flooding",  # PFCP Flooding
     1: "session_deletion",  # PFCP Deletion
@@ -303,6 +333,7 @@ class BlackBoxAttack:
             else:
                 adv_sample[feature] = value
 
+        adv_sample = _enforce_network_constraints(adv_sample, sample)
         return adv_sample
 
 
@@ -319,7 +350,7 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--ds-path",
         type=str,
-        default=None,
+        default="data/datasets/attack_dataset_raw.csv",
         help="The path to the attack dataset file (CSV format)",
         required=True,
     )
@@ -331,11 +362,6 @@ if __name__ == "__main__":
         help="The Nevergrad optimizer to use for the attack",
     )
     argparser.add_argument(
-        "--raw",
-        action="store_true",
-        help="Attack raw models and save to results_raw",
-    )
-    argparser.add_argument(
         "--top-k", type=int, default=10, help="Number of top SHAP modifiable features to attack (default: 10)"
     )
     args = argparser.parse_args()
@@ -344,11 +370,10 @@ if __name__ == "__main__":
     labels = dataset["ip.opt.time_stamp"].copy()
     dataset = dataset.drop(columns=["ip.opt.time_stamp"])
 
-    # 1. Recupero dei file SHAP in base al flag --raw
-    suffix = "raw" if args.raw else "normal"
-    base_res_dir = "results_raw" if args.raw else "results"
+    suffix = "raw"
+    base_res_dir = "results_raw"
 
-    shap_path = Path(__file__).parent.parent / f"{base_res_dir}/with_scaler/explainability/shap_features_{args.model_name}_{suffix}.json"
+    shap_path = Path(__file__).parent.parent / f"{base_res_dir}/without_scaler/explainability/shap_features_{args.model_name}_{suffix}.json"
 
     if not shap_path.exists():
         print(f"ERRORE: File SHAP non trovato in {shap_path}.")
@@ -394,17 +419,17 @@ if __name__ == "__main__":
 
     # Gestione path dinamici in base al flag --raw
     if args.raw:
-        model_path = Path(__file__).parent.parent / f"data/trained_models_raw/with_scaler/{args.model_name}.pkl"
+        model_path = Path(__file__).parent.parent / f"data/trained_models_raw/without_scaler/{args.model_name}.pkl"
         results_path = (
                 Path(__file__).parent.parent
-                / f"results_raw/with_scaler/blackbox_attack/{optimizer_cls.__class__.__name__.lower()}"
+                / f"results_raw/without_scaler/blackbox_attack/{optimizer_cls.__class__.__name__.lower()}"
                 / f"{args.model_name.lower()}_top{args.top_k}.json"
         )
     else:
-        model_path = Path(__file__).parent.parent / f"data/trained_models/with_scaler/{args.model_name}.pkl"
+        model_path = Path(__file__).parent.parent / f"data/trained_models/without_scaler/{args.model_name}.pkl"
         results_path = (
                 Path(__file__).parent.parent
-                / f"results/with_scaler/blackbox_attack/{optimizer_cls.__class__.__name__.lower()}"
+                / f"results/without_scaler/blackbox_attack/{optimizer_cls.__class__.__name__.lower()}"
                 / f"{args.model_name.lower()}_top{args.top_k}.json"
         )
 
