@@ -117,7 +117,11 @@ def run_pipeline(use_raw: bool, specific_model: str):
         # Exclude Ensemble detectors for now
         models_to_run = [m for m in models_to_run if not m.startswith("Ensemble")]
         # Exclude ABOD, FeatureBagging and INNE detector (too heavy for SHAP)
-        models_to_run = [m for m in models_to_run if m != "ABOD" and m != "FeatureBagging" and m != "INNE"]
+        models_to_run = [m for m in models_to_run if m != "ABOD" and
+                                                     m != "FeatureBagging" and
+                                                     m != "INNE" and
+                                                     m != "LODA" and
+                                                     m != "KNN"]
     else:
         models_to_run = [specific_model]
 

@@ -98,15 +98,23 @@ def _detect_type(series: pd.Series) -> str:
     if len(sample_values) == 0:
         return "empty"
 
-    val_set = set(sample_values)
+    samples_values = sample_values[:5]
+
     if pd.api.types.is_bool_dtype(series):
         return "bool"
-    if pd.api.types.is_integer_dtype(series) and val_set.issubset({0, 1}):
-        return "bool"
-    if val_set.issubset({"True", "False", "true", "false", "T", "F"}):
+
+    is_bool = True
+    for v in sample_values:
+        if isinstance(v, (bool, np.bool_)):
+            continue
+        if isinstance(v, str) and v in {"True", "False", "true", "false", "T", "F"}:
+            continue
+        is_bool = False
+        break
+
+    if is_bool:
         return "bool"
 
-    samples_values = sample_values[:5]
     first_val = str(samples_values[0])
     if isinstance(first_val, str) and first_val.startswith("0x"):
         try:
@@ -150,7 +158,13 @@ def convert_to_numeric(
         if dtype == "bool":
             df[col] = (
                 df[col]
-                .map({True: 1, False: 0, "True": 1, "False": 0})
+                .map({
+                    True: 1, False: 0,
+                    "True": 1, "False": 0,
+                    "true": 1, "false": 0,
+                    "T": 1, "F": 0,
+                    np.True_: 1, np.False_: 0
+                })
                 .astype("category")
             )
 
@@ -238,7 +252,13 @@ def convert_to_numeric_raw(
         if dtype == "bool":
             df[col] = (
                 df[col]
-                .map({True: 1, False: 0, "True": 1, "False": 0})
+                .map({
+                    True: 1, False: 0,
+                    "True": 1, "False": 0,
+                    "true": 1, "false": 0,
+                    "T": 1, "F": 0,
+                    np.True_: 1, np.False_: 0
+                })
                 .astype("category")
             )
 

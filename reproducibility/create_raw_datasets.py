@@ -12,7 +12,6 @@ It performs the following steps:
 import logging
 from pathlib import Path
 import sys
-import numpy as np
 import joblib
 import pandas as pd
 
@@ -105,7 +104,7 @@ if __name__ == "__main__":
     # ==========================================
     # BLOCCO DI DEBUG: Stampiamo i valori univoci
     # ==========================================
-    for col in ["ip.flags.df"]:
+    for col in ["pfcp.cause", "pfcp.node_id_type"]:
         if col in df_train_filtered.columns:
             train_vals = df_train_filtered[col].dropna().unique()
             logger.info(f"DEBUG {col} | TRAIN | Totale univoci: {len(train_vals)} | Primi 10: {train_vals[:10]}")
@@ -118,15 +117,15 @@ if __name__ == "__main__":
     # BLOCCO DI DEBUG: Che tipo gli ha assegnato?
     # ==========================================
     for col, dtype in cat_cols_train:
-        if col in ["ip.flags.df"]:
+        if col in ["pfcp.cause", "pfcp.node_id_type"]:
             logger.info(f"DEBUG TRAIN CATEGORY | Colonna: {col} | Tipo assegnato: {dtype}")
     # ==========================================
     df_test_processed, cat_cols_test = convert_to_numeric_raw(df_test_filtered)
     # ==========================================
     # BLOCCO DI DEBUG: Che tipo gli ha assegnato?
     # ==========================================
-    for col, dtype in cat_cols_train:
-        if col in ["ip.flags.df"]:
+    for col, dtype in cat_cols_test:
+        if col in ["pfcp.cause", "pfcp.node_id_type"]:
             logger.info(f"DEBUG TEST CATEGORY | Colonna: {col} | Tipo assegnato: {dtype}")
     # ==========================================
 
@@ -188,6 +187,46 @@ if __name__ == "__main__":
     )
 
     round_cols = [
+        # ONLY for RAW version
+        "tcp.ack",
+        "tcp.ack_raw",
+        "tcp.analysis.bytes_in_flight",
+        "tcp.analysis.push_bytes_sent",
+        "tcp.completeness",
+        "tcp.dstport",
+        "tcp.hdr_len",
+        "tcp.len",
+        "tcp.nxtseq",
+        "tcp.option_kind",
+        "tcp.option_len",
+        "tcp.options.timestamp.tsecr",
+        "tcp.options.timestamp.tsval",
+        "tcp.port",
+        "tcp.seq",
+        "tcp.seq_raw",
+        "tcp.srcport",
+        "tcp.stream",
+        "tcp.window_size",
+        "tcp.window_size_value",
+        "udp.dstport",
+        "udp.length",
+        "udp.port",
+        "udp.srcport",
+        "udp.stream",
+
+        "pfcp.cause",
+        "pfcp.dst_interface",
+        "pfcp.source_interface",
+        "pfcp.flow_desc_len",
+        "pfcp.ie_len",
+        "pfcp.length",
+        "pfcp.node_id_type",
+        "pfcp.pdn_type",
+        "pfcp.precedence",
+        "pfcp.seqno",
+        "pfcp.source_interface",
+        "pfcp.user_id.imei",
+        # COMMON
         "pfcp.duration_measurement",
         "pfcp.ie_type",
         "pfcp.msg_type",
@@ -197,11 +236,6 @@ if __name__ == "__main__":
         "pfcp.volume_measurement.dlvol",
         "pfcp.volume_measurement.tonop",
         "pfcp.volume_measurement.tovol",
-        # ONLY for RAW version
-        "pfcp.cause",
-        "pfcp.node_id_type",
-        "pfcp.pdn_type",
-        "pfcp.source_interface"
     ]
     for col in round_cols:
         if col in df_train_filtered.columns:

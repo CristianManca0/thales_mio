@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 
 # Percorsi e Label
 DATA_DIR = Path(__file__).parent.parent / "data/datasets"
-RAW_PATH = DATA_DIR / "train_dataset_raw.csv"
-CLEAN_PATH = DATA_DIR / "train_dataset.csv"
+RAW_PATH = DATA_DIR / "test_dataset_git.csv"
+CLEAN_PATH = DATA_DIR / "test_dataset.csv"
 LABEL_COL = "ip.opt.time_stamp"
 
 
