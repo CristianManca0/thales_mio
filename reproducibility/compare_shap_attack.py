@@ -16,7 +16,12 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from ml_models import RawDetector
 from preprocessing import RawPreprocessor
-from attacks.blackbox_attack_raw import _enforce_network_constraints
+
+# Allow FakePyODModel and FakeModel to be loaded for testing
+try:
+    from test_dummy_data import FakePyODModel, FakeModel
+except ImportError:
+    pass
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -24,24 +29,6 @@ logger.setLevel(logging.INFO)
 
 VAL_SIZE = 0.50
 RANDOM_STATE = 42
-
-def _apply_modifications(sample: pd.Series, params: Dict[str, Any]) -> pd.Series:
-    adv_sample = sample.copy()
-
-    hex_features = [
-        "ip.id", "ip.checksum", "udp.checksum",
-        "pfcp.f_teid.teid", "pfcp.outer_hdr_creation.teid",
-        "pfcp.seid", "pfcp.flags"
-    ]
-
-    for feature, value in params.items():
-        if feature in hex_features:
-            adv_sample[feature] = hex(max(0, int(float(value))))
-        else:
-            adv_sample[feature] = value
-
-    adv_sample = _enforce_network_constraints(adv_sample, sample)
-    return adv_sample
 
 def _convert_labels_to_binary(labels: pd.Series, expected_len: int) -> np.ndarray:
     if labels is not None:
@@ -110,13 +97,26 @@ def main():
 
     best_params = attack_results[idx_str]["best_params"]
 
-    # Reconstruct Adversarial Sample
-    adv_sample_raw = _apply_modifications(orig_sample_raw, best_params)
+    # Reconstruct Adversarial Sample directly from best_params
+    adv_sample_raw = orig_sample_raw.copy()
+    for feature, value in best_params.items():
+        if feature in adv_sample_raw:
+            adv_sample_raw[feature] = value
+        else:
+            # If the feature was missing in the raw sample but was somehow synthesized/enforced by constraints in the JSON
+            adv_sample_raw[feature] = value
 
     # Preprocess Samples
     df_samples = pd.DataFrame([orig_sample_raw, adv_sample_raw])
     X_samples = processor.test(df_samples).fillna(0)
-    X_samples = X_samples[sorted(X_samples.columns)]
+
+    # Handle the fact that adversarial sample might have introduced new features
+    # (Align columns to background data)
+    for col in X_background.columns:
+        if col not in X_samples.columns:
+            X_samples[col] = 0
+
+    X_samples = X_samples[X_background.columns] # Ensure same shape and order
 
     cat_cols = X_samples.select_dtypes(include=["category"]).columns
     if not cat_cols.empty:
