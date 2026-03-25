@@ -15,7 +15,11 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from ml_models import Detector, RawDetector, EnsembleDetector
 from preprocessing import Preprocessor, RawPreprocessor
-from attacks.blackbox_attack_raw import _enforce_network_constraints, FEAT_MAPPING
+
+# Import the refactored _apply_modifications instance method from BlackBoxAttack,
+# or use a standalone equivalent depending on the codebase structure.
+# Here we redefine it cleanly without the class based on the new attacks/blackbox_attack_raw.py
+from attacks.blackbox_attack_raw import _enforce_network_constraints
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -27,18 +31,15 @@ RANDOM_STATE = 42
 def _apply_modifications(sample: pd.Series, params: dict) -> pd.Series:
     adv_sample = sample.copy()
 
+    hex_features = [
+        "ip.id", "ip.checksum", "udp.checksum",
+        "pfcp.f_teid.teid", "pfcp.outer_hdr_creation.teid",
+        "pfcp.seid", "pfcp.flags"
+    ]
+
     for feature, value in params.items():
-        if feature not in FEAT_MAPPING:
-            continue
-
-        feat_type = FEAT_MAPPING[feature]["type"]
-
-        if feat_type == "hex":
-            adv_sample[feature] = hex(int(value))
-        elif feat_type == "float_int":
-            adv_sample[feature] = float(value)
-        elif feat_type in ["int", "bool_str"]:
-            adv_sample[feature] = int(value)
+        if feature in hex_features:
+            adv_sample[feature] = hex(max(0, int(float(value))))
         else:
             adv_sample[feature] = value
 
@@ -51,26 +52,21 @@ def _convert_labels_to_binary(labels: pd.Series, expected_len: int) -> np.ndarra
     else:
         return np.zeros(expected_len, dtype=int)
 
-def load_data(model_name: str, optimizer_name: str, top_k: int, use_raw: bool = True):
-    if use_raw:
-        models_dir = Path(__file__).parent.parent / "data/trained_models_raw/without_scaler"
-        test_path = Path(__file__).parent.parent / "data/datasets/test_dataset_raw.csv"
-        attack_path = Path(__file__).parent.parent / "data/datasets/attack_dataset_raw.csv"
-        opt_dir = "evolutionstrategy" if optimizer_name == "ES" else "differentialevolution"
-        results_dir = Path(__file__).parent.parent / f"results_raw/without_scaler/blackbox_attack/{opt_dir}"
-        processor = RawPreprocessor()
-    else:
-        models_dir = Path(__file__).parent.parent / "data/trained_models/without_scaler"
-        test_path = Path(__file__).parent.parent / "data/datasets/test_dataset.csv"
-        attack_path = Path(__file__).parent.parent / "data/datasets/attack_dataset.csv"
-        opt_dir = "evolutionstrategy" if optimizer_name == "ES" else "differentialevolution"
-        results_dir = Path(__file__).parent.parent / f"results/without_scaler/blackbox_attack/{opt_dir}"
-        processor = Preprocessor()
+
+def run_compare_shap(model_name: str, sample_idx: int, optimizer_name: str, top_k: str):
+    logger.info(f"========== STARTING COMPARISON PIPELINE for {model_name} ==========")
+
+    models_dir = Path(__file__).parent.parent / "data/trained_models_raw/without_scaler"
+    test_path = Path(__file__).parent.parent / "data/datasets/test_dataset_raw.csv"
+    attack_path = Path(__file__).parent.parent / "data/datasets/attack_dataset_raw.csv"
+    opt_dir = "evolutionstrategy" if optimizer_name == "ES" else "differentialevolution"
+    results_dir = Path(__file__).parent.parent / f"results_raw/without_scaler/blackbox_attack/{opt_dir}"
+    processor = RawPreprocessor()
 
     model_path = models_dir / f"{model_name}.pkl"
     if not model_path.exists():
         logger.error(f"Model file not found: {model_path}")
-        return None, None, None, None, None
+        return
 
     detector = joblib.load(model_path)
 
@@ -80,18 +76,13 @@ def load_data(model_name: str, optimizer_name: str, top_k: int, use_raw: bool = 
     results_file = results_dir / f"{model_name.lower()}_top{top_k}.json"
     if not results_file.exists():
          logger.error(f"Attack results file not found: {results_file}")
-         return None, None, None, None, None
+         return
 
     with open(results_file, "r") as f:
         attack_results = json.load(f)
 
-    return detector, df_test, df_attack, attack_results, processor
-
-def compute_shap_comparison(model_name: str, detector, df_test: pd.DataFrame, df_attack: pd.DataFrame,
-                            attack_results: dict, sample_idx: int, processor, suffix: str):
-
     if str(sample_idx) not in attack_results:
-        logger.error(f"Sample index {sample_idx} not found in attack results.")
+        logger.error(f"Sample index {sample_idx} not found in attack results in {results_file}.")
         return
 
     result_data = attack_results[str(sample_idx)]
@@ -113,7 +104,6 @@ def compute_shap_comparison(model_name: str, detector, df_test: pd.DataFrame, df
 
     X_ts = processor.test(X_ts)
 
-    # Process samples
     orig_df = processor.test(pd.DataFrame([orig_sample]))
     adv_df = processor.test(pd.DataFrame([adv_sample]))
 
@@ -140,17 +130,9 @@ def compute_shap_comparison(model_name: str, detector, df_test: pd.DataFrame, df
     shap_values_orig = explainer.shap_values(orig_df)
     shap_values_adv = explainer.shap_values(adv_df)
 
-    generate_comparison_plot(model_name, sample_idx, shap_values_orig, shap_values_adv, orig_df, adv_df, suffix)
-
-
-def generate_comparison_plot(model_name: str, sample_idx: int, shap_values_orig: np.ndarray,
-                             shap_values_adv: np.ndarray, orig_df: pd.DataFrame,
-                             adv_df: pd.DataFrame, suffix: str):
-
-    results_dir = Path(__file__).parent.parent / f"results_{suffix}/without_scaler/explainability"
-    results_dir.mkdir(parents=True, exist_ok=True)
-
-    output_file = results_dir / f"shap_comparison_{model_name}_sample{sample_idx}_{suffix}.png"
+    out_dir = Path(__file__).parent.parent / "results_raw/without_scaler/explainability"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_file = out_dir / f"shap_comparison_{model_name}_sample{sample_idx}_raw.png"
 
     fig, axes = plt.subplots(1, 2, figsize=(20, 8))
 
@@ -168,27 +150,13 @@ def generate_comparison_plot(model_name: str, sample_idx: int, shap_values_orig:
 
     logger.info(f"Successfully saved SHAP comparison plot to {output_file}")
 
-def run_pipeline(args):
-    model_name = args.model_name
-    sample_idx = args.sample_idx
-    optimizer = args.optimizer
-    top_k = args.top_k
-
-    logger.info(f"========== STARTING RAW PIPELINE ==========")
-    detector, df_test, df_attack, attack_results, processor = load_data(
-        model_name, optimizer, top_k, use_raw=True
-    )
-
-    if detector is not None:
-        compute_shap_comparison(model_name, detector, df_test, df_attack,
-                                attack_results, sample_idx, processor, suffix="raw")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compare SHAP explainability on original and adversarial samples.")
     parser.add_argument("--model-name", type=str, required=True, help="Name of the model to explain.")
     parser.add_argument("--sample-idx", type=int, required=True, help="Index of the sample in the attack dataset.")
     parser.add_argument("--optimizer", type=str, default="ES", choices=["ES", "DE"], help="Optimizer used for the attack.")
-    parser.add_argument("--top-k", type=int, default=10, help="Number of top SHAP modifiable features used in attack.")
+    parser.add_argument("--top-k", type=str, default="10", help="Number of top SHAP modifiable features used in attack (e.g., 10 or 'all').")
 
     args = parser.parse_args()
-    run_pipeline(args)
+    run_compare_shap(args.model_name, args.sample_idx, args.optimizer, args.top_k)

@@ -104,7 +104,7 @@ if __name__ == "__main__":
     # ==========================================
     # BLOCCO DI DEBUG: Stampiamo i valori univoci
     # ==========================================
-    for col in ["pfcp.cause", "pfcp.node_id_type"]:
+    for col in ["pfcp.end_time"]:
         if col in df_train_filtered.columns:
             train_vals = df_train_filtered[col].dropna().unique()
             logger.info(f"DEBUG {col} | TRAIN | Totale univoci: {len(train_vals)} | Primi 10: {train_vals[:10]}")
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     # BLOCCO DI DEBUG: Che tipo gli ha assegnato?
     # ==========================================
     for col, dtype in cat_cols_train:
-        if col in ["pfcp.cause", "pfcp.node_id_type"]:
+        if col in ["pfcp.end_time"]:
             logger.info(f"DEBUG TRAIN CATEGORY | Colonna: {col} | Tipo assegnato: {dtype}")
     # ==========================================
     df_test_processed, cat_cols_test = convert_to_numeric_raw(df_test_filtered)
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     # BLOCCO DI DEBUG: Che tipo gli ha assegnato?
     # ==========================================
     for col, dtype in cat_cols_test:
-        if col in ["pfcp.cause", "pfcp.node_id_type"]:
+        if col in ["pfcp.end_time"]:
             logger.info(f"DEBUG TEST CATEGORY | Colonna: {col} | Tipo assegnato: {dtype}")
     # ==========================================
 
@@ -136,22 +136,17 @@ if __name__ == "__main__":
     if str_cols:
         df_train_str = df_train_processed[str_cols].astype(str)
         df_test_str = df_test_processed[str_cols].astype(str)
-
         df_train_filtered[str_cols] = encoder.fit_transform(df_train_str)
         df_test_filtered[str_cols] = encoder.transform(df_test_str)
-
-        encoder_path = Path(__file__).parent.parent / "preprocessing/models_preprocessing/ordinal_encoder_raw.pkl"
+        encoder_path = Path(__file__).parent.parent / "preprocessing/models_preprocessing_raw/ordinal_encoder_raw.pkl"
         joblib.dump(encoder, encoder_path)
 
     # -------------------------------
     # [Step 6] Impute missing values
     # -------------------------------
     logger.info("Imputing missing values...")
-
     simple_imputer, iter_imputer = load_imputers_raw(random_state=42)
     encoder = load_encoders_raw()
-
-    str_cols = [c for c, t in cat_cols_train if t == "string"]
 
     # Train data
     cat_cols = df_train_processed.select_dtypes(include=["category"]).columns
@@ -214,6 +209,10 @@ if __name__ == "__main__":
         "udp.srcport",
         "udp.stream",
 
+        "pfcp.end_time",
+        "pfcp.recovery_time_stamp",
+        "pfcp.time_of_first_packet",
+        "pfcp.time_of_last_packet",
         "pfcp.cause",
         "pfcp.dst_interface",
         "pfcp.source_interface",

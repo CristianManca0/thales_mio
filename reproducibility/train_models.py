@@ -78,20 +78,11 @@ PARAM_GRID_MODELS = {
         "tol": [0.1, 0.5],
         "contamination": [0.001, 0.01],
     },
-    "ABOD": {
-        "n_neighbors": [1, 3, 5, 10, 20, 30, 50, 100],
-        "contamination": [0.001, 0.01],
-    },
     "GMM": {
         "n_components": [1, 2, 3, 4, 5, 10],
         "covariance_type": ["full", "diag", "tied"],
         "contamination": [0.001, 0.01],
         "random_state": [42],
-    },
-    "KNN": {
-        "n_neighbors": [3, 5, 10, 20, 50],
-        "method": ["largest", "mean", "median"],
-        "contamination": [0.001, 0.01],
     },
     "LOF": {
         "n_neighbors": [3, 5, 11, 20, 35, 50],
@@ -103,6 +94,18 @@ PARAM_GRID_MODELS = {
         "max_features": [0.5, 0.75, 1.0],
         "random_state": [42],
         "contamination": [0.01, 0.001],
+    },
+    "PCA": {
+        "n_components": [1, 5, 10, 20, 35],
+        "contamination": [0.001, 0.01],
+        "random_state": [42],
+    },
+    "COPOD": {"contamination": [0.001, 0.01, 0.05]},
+    "ECOD": {"contamination": [0.001, 0.01]},
+    "KNN": {
+        "n_neighbors": [3, 5, 10, 20, 50],
+        "method": ["largest", "mean", "median"],
+        "contamination": [0.001, 0.01],
     },
     "INNE": {
         "max_samples": [2, 10, 50],
@@ -119,13 +122,10 @@ PARAM_GRID_MODELS = {
         ],
         "contamination": [0.001, 0.01],
     },
-    "PCA": {
-        "n_components": [1, 5, 10, 20, 35],
+    "ABOD": {
+        "n_neighbors": [1, 3, 5, 10, 20, 30, 50, 100],
         "contamination": [0.001, 0.01],
-        "random_state": [42],
     },
-    "COPOD": {"contamination": [0.001, 0.01, 0.05]},
-    "ECOD": {"contamination": [0.001, 0.01]},
     "LODA": {
         "n_bins": [10, 20, 50],
         "n_random_cuts": [50, 100],
