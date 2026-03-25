@@ -357,7 +357,8 @@ class BlackBoxAttack:
                 "udp.checksum",
                 "pfcp.seid",
                 "pfcp.f_teid.teid",
-                "pfcp.outer_hdr_creation.teidpfcp.flags",
+                "pfcp.outer_hdr_creation.teid",
+                "pfcp.flags",
             ]:
                 adv_sample[feature] = hex(value)
             else:
@@ -398,9 +399,8 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--ds-path",
         type=str,
-        default=None,
+        default="data/datasets/attack_dataset.csv",
         help="The path to the attack dataset file (CSV format)",
-        required=True,
     )
     argparser.add_argument(
         "--optimizer",
@@ -409,13 +409,45 @@ if __name__ == "__main__":
         default="ES",
         help="The Nevergrad optimizer to use for the attack",
     )
+    argparser.add_argument(
+        "--top-k",
+        default="all",
+        help="Number of top SHAP modifiable features to attack (default: all)"
+    )
     args = argparser.parse_args()
 
     dataset = pd.read_csv(args.ds_path, sep=";", low_memory=False)
     labels = dataset["ip.opt.time_stamp"].copy()
     dataset = dataset.drop(columns=["ip.opt.time_stamp"])
 
-    if args.optmizer == "ES":
+    base_res_dir = "results"
+    shap_path = (Path(__file__).parent.parent
+                 / f"{base_res_dir}/with_scaler/explainability/shap_features_{args.model_name}_normal.json"
+                 )
+
+    if args.top_k != "all":
+        if not shap_path.exists():
+            logger.info(f"ERROR: SHAP Path not found: {shap_path}.")
+            sys.exit(1)
+        with open(shap_path, "r", encoding="utf-8") as f:
+            shap_data = json.load(f)
+        # Top K modifiable feature
+        ordered_shap_features = [item["feature"] for item in shap_data]
+        modifiable_shap_features = [feat for feat in ordered_shap_features if feat in FEAT_MAPPING]
+        top_k_features = modifiable_shap_features[:int(args.top_k)]
+        logger.info(f"\n--- SHAP GUIDED BLACKBOX ATTACK ({args.optimizer}) ---")
+        logger.info(f"Top {args.top_k} feature modificabili estratte da SHAP:")
+        for i, feat in enumerate(top_k_features, 1):
+            logger.info(f"  {i}. {feat}")
+        logger.info("-" * 45 + "\n")
+    else:
+        top_k_features = [feat for feat in FEAT_MAPPING]
+
+    if not top_k_features:
+        logger.info("No modifiable features found in SHAP data. Please check the SHAP results and FEAT_MAPPING.")
+        sys.exit(1)
+
+    if args.optimizer == "ES":
         optimizer_cls = ng.optimizers.EvolutionStrategy(
             recombination_ratio=0.9,
             popsize=20,
@@ -436,11 +468,10 @@ if __name__ == "__main__":
         Path(__file__).parent.parent
         / f"data/trained_models/with_scaler/{args.model_name}.pkl"
     )
-
     results_path = (
         Path(__file__).parent.parent
         / f"results/with_scaler/blackbox_attack/{optimizer_cls.__class__.__name__.lower()}"
-        / f"{args.model_name.lower()}.json"
+        / f"{args.model_name.lower()}_top{args.top_k}.json"
     )
     if results_path.exists():
         with results_path.open("r") as f:

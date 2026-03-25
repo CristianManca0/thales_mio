@@ -251,9 +251,8 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--ds-path",
         type=str,
-        default=None,
+        default="data/datasets/attack_dataset.csv",
         help="The path to the attacks dataset file",
-        required=True,
     )
     args = argparser.parse_args()
 

@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import shap
 from sklearn.model_selection import train_test_split
+from scipy.stats import pearsonr
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -22,6 +23,39 @@ logger.setLevel(logging.INFO)
 
 VAL_SIZE = 0.50
 RANDOM_STATE = 42
+
+
+def extract_and_save_shap_directions(X_explain, shap_values, feature_names, model_name, results_dir):
+    """
+    Calcola le direzioni SHAP (increase/decrease) e le salva in un file JSON.
+    """
+    directions = {}
+    # Crea una sottocartella specifica per le direzioni
+    dir_path = results_dir.parent / "shap_directions"
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    for i, feat in enumerate(feature_names):
+        feat_vals = X_explain.iloc[:, i].values
+        # Gestisce il caso in cui shap_values sia una lista (es. output multiclasse) o un array 2D
+        if isinstance(shap_values, list):
+            s_vals = shap_values[1][:, i] if len(shap_values) > 1 else shap_values[0][:, i]
+        else:
+            s_vals = shap_values[:, i]
+
+        corr, _ = pearsonr(feat_vals, s_vals)
+        if np.isnan(corr):
+            continue
+
+        if corr > 0:
+            directions[feat] = "decrease"
+        elif corr < 0:
+            directions[feat] = "increase"
+
+    output_path = dir_path / f"{model_name}_shap_directions.json"
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(directions, f, indent=4)
+
+    logger.info(f"Salvate direzioni SHAP per {model_name} in {output_path}")
 
 
 def _convert_labels_to_binary(labels: pd.Series, expected_len: int) -> np.ndarray:
@@ -53,15 +87,16 @@ def compute_shap_for_model(model_name: str, detector, X_background: pd.DataFrame
             explainer = shap.KernelExplainer(model_predict, X_background)
             shap_values = explainer.shap_values(X_explain)
 
+            extract_and_save_shap_directions(X_explain, shap_values, X_explain.columns.tolist(), model_name,
+                                             results_dir)
+
             # 1. Save summary plot
             plt.figure(figsize=(10, 8))
             shap.summary_plot(shap_values, X_explain, show=False, max_display=10)
-
             plt.title(f"SHAP Top 10 Features - {model_name} ({suffix})")
             plt.tight_layout()
             plt.savefig(output_file, bbox_inches="tight")
             plt.close()
-
             logger.info(f"Successfully saved SHAP summary plot to {output_file}")
 
             # 2. Save feature importances to JSON

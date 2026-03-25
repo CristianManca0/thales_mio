@@ -19,28 +19,68 @@ from ml_models import Detector, RawDetector
 def _enforce_network_constraints(sample: pd.Series, orig_sample: pd.Series) -> pd.Series:
     """
     Ricalcola le feature derivate per mantenere il pacchetto avversario
-    fisicamente realistico e coerente con lo stack TCP/IP.
+    fisicamente realistico e coerente con lo stack TCP/IP e PFCP.
     """
     adv_sample = sample.copy()
+
     # 1. Coerenza del QoS (ip.dsfield <- ip.dsfield.dscp)
     if "ip.dsfield.dscp" in adv_sample and "ip.dsfield" in adv_sample:
-        # Recuperiamo i 2 bit originali di ECN (se presenti)
         orig_dsfield = int(str(orig_sample["ip.dsfield"]), 16) if pd.notnull(orig_sample["ip.dsfield"]) else 0
         orig_ecn = orig_dsfield & 0x03
-
         new_dscp = int(adv_sample["ip.dsfield.dscp"])
-        # dsfield = (dscp * 4) + ecn
         adv_sample["ip.dsfield"] = hex((new_dscp << 2) | orig_ecn)
 
     # 2. Coerenza dei Flag IP (ip.flags <- ip.flags.df)
     if "ip.flags.df" in adv_sample and "ip.flags" in adv_sample:
         df_bit = int(adv_sample["ip.flags.df"])
-        # Standard IPv4: bit DF è 0x02. (Ignoriamo MF per semplicità, nei pacchetti PFCP non si frammenta quasi mai)
         adv_sample["ip.flags"] = hex(0x02) if df_bit == 1 else hex(0x00)
 
     # 3. Coerenza Porte UDP (udp.port <- udp.srcport)
     if "udp.srcport" in adv_sample and "udp.port" in adv_sample:
         adv_sample["udp.port"] = adv_sample["udp.srcport"]
+
+    # 4. Coerenza Timestamp e Durata PFCP
+        # 4. Coerenza Timestamp e Durata PFCP (Ora con float matematici puri)
+        if all(k in adv_sample for k in
+               ["pfcp.time_of_first_packet", "pfcp.time_of_last_packet", "pfcp.duration_measurement"]):
+            try:
+                orig_duration = float(orig_sample["pfcp.duration_measurement"]) if pd.notnull(
+                    orig_sample["pfcp.duration_measurement"]) else 0.0
+                adv_duration = float(adv_sample["pfcp.duration_measurement"])
+                t_first = float(adv_sample["pfcp.time_of_first_packet"])
+                t_last = float(adv_sample["pfcp.time_of_last_packet"])
+                if adv_duration != orig_duration:
+                    # L'ottimizzatore ha cambiato la durata, aggiorniamo l'ultimo pacchetto
+                    adv_sample["pfcp.time_of_last_packet"] = float(t_first + adv_duration)
+                else:
+                    # Ricalcoliamo la durata in base ai timestamp modificati
+                    adv_sample["pfcp.duration_measurement"] = float(max(0.0, t_last - t_first))
+            except Exception:
+                pass
+
+            # 5. Coerenza Volumetrie PFCP (Usage Reports)
+    if "pfcp.volume_measurement.dlvol" in adv_sample and "pfcp.volume_measurement.tovol" in adv_sample:
+        dlvol = float(adv_sample["pfcp.volume_measurement.dlvol"])
+        tovol = float(adv_sample["pfcp.volume_measurement.tovol"])
+        if dlvol > tovol:
+            adv_sample["pfcp.volume_measurement.tovol"] = float(dlvol)
+
+    if "pfcp.volume_measurement.dlnop" in adv_sample and "pfcp.volume_measurement.tonop" in adv_sample:
+        dlnop = float(adv_sample["pfcp.volume_measurement.dlnop"])
+        tonop = float(adv_sample["pfcp.volume_measurement.tonop"])
+        if dlnop > tonop:
+            adv_sample["pfcp.volume_measurement.tonop"] = float(dlnop)
+
+    # 6. Coerenza Lunghezze (ip.len vs pfcp.lenght)
+    if "pfcp.lenght" in adv_sample and "ip.len" in adv_sample:
+        # Se c'è una discrepanza tra IP len e PFCP len, facciamo comandare PFCP
+        # IP Len = 20(IPv4) + 8(UDP) + 4(PFCP base) + PFCP_Message_Length
+        pfcp_len = float(adv_sample["pfcp.lenght"])
+        adv_sample["ip.len"] = int(32 + pfcp_len)
+
+    # 7. Coerenza Node ID Type
+    if "pfcp.node_id_type" in adv_sample and "pfcp.node_id_ipv4" in adv_sample:
+        adv_sample["pfcp.node_id_type"] = 0.0
 
     return adv_sample
 
@@ -72,16 +112,17 @@ ATTACK_FEATURES = {
 # ---------------------------------------------------------------------
 FEAT_MAPPING: Dict[str, Dict[str, Any]] = {
     # ------------- IP -------------
-    "ip.ttl": {"type": "int"},
-    "ip.id": {"type": "hex"},
-    "ip.len": {"type": "int"},
-    "ip.checksum": {"type": "hex"},
-    "ip.dsfield.dscp": {"type": "int"},
-    "ip.flags.df": {"type": "bool_str"},
+    "ip.ttl": {"type": "int", "min": 2, "max": 200},
+    "ip.id": {"type": "hex", "min": 0x0, "max": 0xFFFE},
+    "ip.len": {"type": "int", "min": 44, "max": 653},
+    "ip.checksum": {"type": "hex", "min": 0x36, "max": 0xFFF5},
+    "ip.dsfield.dscp": {"type": "int", "min": 0, "max": 63},
+    "ip.flags.df": {"type": "int", "choices": [0, 1]},
+
     # ------------- UDP -------------
-    "udp.checksum": {"type": "hex"},
-    "udp.srcport": {"type": "int"},
-    "udp.port": {"type": "int"},
+    "udp.checksum": {"type": "hex", "min": 0x955, "max": 0xA118},
+    "udp.srcport": {"type": "int", "min": 8805, "max": 62434},  # Esteso al limite protocollo
+
     # ------------- PFCP Booleans -------------
     "pfcp.apply_action.buff": {"type": "bool_str"},
     "pfcp.apply_action.forw": {"type": "bool_str"},
@@ -91,47 +132,80 @@ FEAT_MAPPING: Dict[str, Dict[str, Any]] = {
     "pfcp.f_teid_flags.ch_id": {"type": "bool_str"},
     "pfcp.f_teid_flags.v6": {"type": "bool_str"},
     "pfcp.s": {"type": "bool_str"},
-    "pfcp.ue_ip_address_flag.sd": {"type": "bool_str"},
+    "pfcp.ue_ip_address_flag.sd": {"type": "int", "min": 0, "max": 1},
+
     # ------------- PFCP IPv4 -------------
     "pfcp.f_seid.ipv4": {"type": "ipv4"},
     "pfcp.f_teid.ipv4_addr": {"type": "ipv4"},
     "pfcp.node_id_ipv4": {"type": "ipv4"},
     "pfcp.outer_hdr_creation.ipv4": {"type": "ipv4"},
     "pfcp.ue_ip_addr_ipv4": {"type": "ipv4"},
+
     # ------------- PFCP Hex -------------
-    "pfcp.f_teid.teid": {"type": "hex"},
-    "pfcp.outer_hdr_creation.teid": {"type": "hex"},
-    "pfcp.seid": {"type": "hex"},
-    "pfcp.flags": {"type": "hex"},
+    "pfcp.f_teid.teid": {"type": "hex", "min": 0x1D, "max": 0xFFE3},
+    "pfcp.outer_hdr_creation.teid": {"type": "hex", "min": 0x1, "max": 0x18B6},
+    "pfcp.seid": {"type": "hex", "min": 0x00, "max": 0xFFF},
+    "pfcp.flags": {"type": "hex", "min": 0x20, "max": 0x21},
+
     # ------------- PFCP Numeric / Categorical IDs -------------
-    "pfcp.cause": {"type": "float_int"},
-    "pfcp.dst_interface": {"type": "float_int"},
-    "pfcp.source_interface": {"type": "float_int"},
-    "pfcp.node_id_type": {"type": "float_int"},
-    "pfcp.pdn_type": {"type": "float_int"},
-    "pfcp.ie_type": {"type": "float_int"},
-    "pfcp.msg_type": {"type": "float_int"},
-    "pfcp.pdr_id": {"type": "float_int"},
-    "pfcp.response_to": {"type": "float_int"},
-    "pfcp.precedence": {"type": "float_int"},
+    "pfcp.cause": {"type": "float", "min": 1.0, "max": 65.0},
+    "pfcp.dst_interface": {"type": "float_int", "min": 0.0, "max": 1.0},
+    "pfcp.source_interface": {"type": "float_int", "min": 0.0, "max": 1.0},
+    "pfcp.node_id_type": {"type": "float_int", "min": 0.0, "max": 2.0},
+    "pfcp.pdn_type": {"type": "float_int", "min": 0.0, "max": 1.0},
+    "pfcp.ie_type": {"type": "float_int", "min": 10.0, "max": 96.0},
+    "pfcp.msg_type": {"type": "float_int", "min": 1.0, "max": 57.0},
+    "pfcp.pdr_id": {"type": "float_int", "min": 1.0, "max": 2.0},
+    "pfcp.response_time": {
+        "type": "float",
+        "min": 2.0095e-05,
+        "max": 0.041239073,
+    },
+    "pfcp.response_to": {"type": "float_int", "min": 1.0, "max": 2565.0},
+    "pfcp.precedence": {"type": "float_int", "min": 200.0, "max": 255.0},
+    "pfcp.flow_desc": {"type": "float_int", "min": -1.0, "max": 2.0},
+    "pfcp.network_instance": {"type": "float_int", "min": -1.0, "max": 2.0},
+    "pfcp.user_id.imei": {"type": "float", "min": 4370816125816151.0, "max": 4370816125816182.5},
+
     # ------------- PFCP Metrics / Counters -------------
-    "pfcp.duration_measurement": {"type": "float_int"},
-    "pfcp.seqno": {"type": "float_int"},
-    "pfcp.volume_measurement.dlnop": {"type": "float_int"},
-    "pfcp.volume_measurement.dlvol": {"type": "float_int"},
-    "pfcp.volume_measurement.tonop": {"type": "float_int"},
-    "pfcp.volume_measurement.tovol": {"type": "float_int"},
-    "pfcp.flow_desc_len": {"type": "float_int"},
-    "pfcp.ie_len": {"type": "float_int"},
-    "pfcp.lenght": {"type": "float_int"},
+    # Cap alla durata di massimo 1 giorno (86400s) per evitare le anomalie da 50 anni
+    "pfcp.duration_measurement": {
+        "type": "float_int",
+        "min": 1747212643.0,
+        "max": 1753894838.0,
+    },
+    "pfcp.seqno": {"type": "float_int", "min": 0.0, "max": 202364.0},
+    # Cap Volumi fino a ~20MB per realismo
+    "pfcp.volume_measurement.dlnop": {
+        "type": "float_int",
+        "min": 0.0,
+        "max": 13195.0,
+    },
+    "pfcp.volume_measurement.dlvol": {
+        "type": "float_int",
+        "min": 0.0,
+        "max": 17834134.0,
+    },
+    "pfcp.volume_measurement.tonop": {
+        "type": "float_int",
+        "min": 0.0,
+        "max": 13195.0,
+    },
+    "pfcp.volume_measurement.tovol": {
+        "type": "float_int",
+        "min": 0.0,
+        "max": 17834134.0,
+    },
+    "pfcp.flow_desc_len": {"type": "float_int", "min": 34.0, "max": 42.0},
+    "pfcp.ie_len": {"type": "float_int", "min": 1.0, "max": 50.0},
+    "pfcp.length": {"type": "float_int", "min": 12.0, "max": 621.0},
+
     # ------------- PFCP Timestamps -------------
-    "pfcp.recovery_time_stamp": {"type": "float_int"},
-    "pfcp.time_of_first_packet": {"type": "float_int"},
-    "pfcp.time_of_last_packet": {"type": "float_int"},
-    # ------------- Ordinal Encoded Strings -------------
-    "pfcp.flow_desc": {"type": "float_int"},
-    "pfcp.network_instance": {"type": "float_int"},
-    "pfcp.user_id_imei": {"type": "float_int"},
+    # Impostiamo una finestra temporale sicura di ~1 anno attorno ai dati reali (1747207882 = Maggio 2025)
+    # per evitare il crash di Nevergrad con il 2262.
+    "pfcp.recovery_time_stamp": {"type": "timestamp", "min": 1747207882.0, "max": 1800000000.0},
+    "pfcp.time_of_first_packet": {"type": "timestamp", "min": 1747212464.0, "max": 1800000000.0},
+    "pfcp.time_of_last_packet": {"type": "timestamp", "min": 1747212640.0, "max": 1800000000.0},
 }
 
 
@@ -173,6 +247,9 @@ def generate_random_value(mapping: dict) -> Any:
     if field_type == "int": return rand_int(mapping["min"], mapping["max"])
     if field_type == "float": return rand_float(mapping["min"], mapping["max"])
     if field_type == "float_int": return rand_float_int(mapping["min"], mapping["max"])
+    if field_type == "timestamp":
+        val = rand_float(mapping["min"], mapping["max"])
+        return str(pd.to_datetime(val, unit='s'))
     return None
 
 def random_attack(
@@ -214,7 +291,7 @@ if __name__ == "__main__":
         "--ds-path", type=str, default="data/datasets/attack_dataset_raw.csv", help="The path to the attacks dataset file"
     )
     argparser.add_argument(
-        "--top-k", type=int, default=10, help="Number of top SHAP modifiable features to attack (default: 10)"
+        "--top-k", default="all", help="Number of top SHAP modifiable features to attack (default: all)"
     )
     args = argparser.parse_args()
 
@@ -237,7 +314,10 @@ if __name__ == "__main__":
     # 2. Selezione Top K feature modificabili
     ordered_shap_features = [item["feature"] for item in shap_data]
     modifiable_shap_features = [feat for feat in ordered_shap_features if feat in FEAT_MAPPING]
-    top_k_features = modifiable_shap_features[:args.top_k]
+    if args.top_k != "all":
+        top_k_features = modifiable_shap_features[:args.top_k]
+    else:
+        top_k_features = modifiable_shap_features
 
     print(f"\n--- SHAP GUIDED ATTACK (RAW) ---")
     print(f"Modello: {args.model_name}")
@@ -257,9 +337,25 @@ if __name__ == "__main__":
         if feat in dataset.columns and mapping["type"] not in ["ipv4", "bool_str"]:
             valid_data = dataset[feat].dropna()
             if not valid_data.empty:
-                mapping["min"] = float(valid_data.min()) if mapping["type"] == "float" else int(valid_data.min())
-                mapping["max"] = float(valid_data.max()) if mapping["type"] == "float" else int(valid_data.max())
+                if mapping["type"] == "hex":
+                    # Convertiamo tutto in intero prima di cercare min e max
+                    int_vals = valid_data.apply(
+                        lambda x: int(str(x), 16) if str(x).startswith("0x") else int(float(x))
+                    )
+                    mapping["min"] = int(int_vals.min())
+                    mapping["max"] = int(int_vals.max())
+                elif mapping["type"] == "timestamp":
+                    dt_series = pd.to_datetime(valid_data, errors='coerce')
+                    mapping["min"] = dt_series.min().timestamp()
+                    mapping["max"] = dt_series.max().timestamp()
+                else:
+                    # GESTIONE NORMALE (Float / Int)
+                    mapping["min"] = float(valid_data.min()) if mapping["type"] == "float" else int(
+                        float(valid_data.min()))
+                    mapping["max"] = float(valid_data.max()) if mapping["type"] == "float" else int(
+                        float(valid_data.max()))
             else:
+                print(f"Attenzione: La feature '{feat}' è presente ma non ha dati validi. Imposto bounds di default 0-100.")
                 mapping["min"] = 0
                 mapping["max"] = 100
 
@@ -302,6 +398,7 @@ if __name__ == "__main__":
         adv_score = detector.decision_function(pd.DataFrame([adv_sample]))[0]
 
         if hasattr(detector, "_detector"):
+            print(f"Detector threshold: {detector._detector.threshold_}")
             if adv_score < detector._detector.threshold_:
                 print(f"Sample {idx} - Adv score: {adv_score} -> SUCCESS!\n")
                 results[idx] = {

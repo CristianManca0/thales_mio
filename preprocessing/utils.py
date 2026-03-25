@@ -286,8 +286,11 @@ def convert_to_numeric_raw(
 
 
         elif dtype == "datetime":
-            df[col] = pd.to_numeric(pd.to_datetime(df[col], errors="coerce"), errors='coerce') / 1e9
-            df[col] = df[col].astype("category")
+            # Estraiamo le date
+            dt_series = pd.to_datetime(df[col], errors="coerce")
+            # Se è vuota (NaT) forziamo NaN, altrimenti convertiamo in secondi!
+            df[col] = np.where(dt_series.isna(), np.nan, dt_series.astype("int64") / 1e9)
+            # df[col] = df[col].astype("category")
 
     return df, cat_cols
 
@@ -316,11 +319,11 @@ def restore_categoric_columns_raw(
             )
             df[col] = df[col].astype("category")
 
-        elif dtype == "datetime":
-            df[col] = pd.to_datetime(
-                df[col].astype("float"), unit="s", errors="coerce"
-            )
-            df[col] = df[col].astype("category")
+        #elif dtype == "datetime":
+        #    df[col] = pd.to_datetime(
+        #        df[col].astype("float"), unit="s", errors="coerce"
+        #    )
+        #    df[col] = df[col].astype("category")
 
     return df
 
