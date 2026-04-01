@@ -121,13 +121,13 @@ FEAT_MAPPING = {
     "ip.len": ng.p.Scalar(lower=44, upper=653).set_integer_casting(),
     "ip.checksum": ng.p.Scalar(lower=54, upper=65525).set_integer_casting(),
     "ip.dsfield.dscp": ng.p.Scalar(lower=0, upper=63).set_integer_casting(),
+    "ip.flags.df": ng.p.Choice([True, False]),
 
     # ------------- UDP -------------
     "udp.checksum": ng.p.Scalar(lower=2389, upper=41240).set_integer_casting(),
     "udp.srcport": ng.p.Scalar(lower=8805, upper=62434).set_integer_casting(),
 
     # ------------- PFCP Booleans -------------
-    "ip.flags.df": ng.p.Choice([True, False]),
     "pfcp.apply_action.buff": ng.p.Choice([True, False]),
     "pfcp.apply_action.forw": ng.p.Choice([True, False]),
     "pfcp.apply_action.nocp": ng.p.Choice([True, False]),
@@ -357,6 +357,8 @@ class BlackBoxAttack:
             # --- FINE BLOCCO DEBUG ---'''
 
             loss = self._compute_loss(x_adv, detector)
+            self._optimizer.tell(x, loss)
+
             logger.info(f"Iteration {idx + 1}/{self._query_budget}: loss = {loss}")
             if hasattr(detector, "_detector"):
                 if loss < detector._detector.threshold_:
@@ -367,8 +369,6 @@ class BlackBoxAttack:
                 if y_pred == 0:
                     logger.info(f"Sample evaded the detector after {idx + 1} queries.")
                     break
-
-            self._optimizer.tell(x, loss)
 
         # ----------------------
         # [Step 4] Save results
